@@ -16,8 +16,22 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 
+// FRONTEND_URL may contain one or more comma-separated origins. Trailing
+// slashes are stripped because the browser's Origin header never has one, and
+// the cors package matches origins by exact string.
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Update with your actual frontend URL
+  origin: (origin, callback) => {
+    // Allow non-browser clients (no Origin header) and any whitelisted origin.
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
   credentials: true, // CRITICAL: This allows the HttpOnly cookie to be sent to the frontend
 }));
 app.use(express.json());
