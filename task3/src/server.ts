@@ -27,10 +27,12 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
 app.use(cors({
   origin: (origin, callback) => {
     // Allow non-browser clients (no Origin header) and any whitelisted origin.
+    // Refuse others without throwing: the browser blocks the response (no
+    // Allow-Origin header) but we avoid emitting a 500 for every bad origin.
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error(`Not allowed by CORS: ${origin}`));
+    return callback(null, false);
   },
   credentials: true, // CRITICAL: This allows the HttpOnly cookie to be sent to the frontend
 }));
