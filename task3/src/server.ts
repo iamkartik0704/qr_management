@@ -82,14 +82,19 @@ app.get('/health', (req: Request, res: Response) => {
 // Connect to the database first, then start listening so the server
 // never accepts requests before MongoDB is ready.
 connectDB().then(async () => {
-  // Optional one-shot seeding on boot, using THIS host's env vars (e.g. Render).
-  // Set RUN_SEED=true, deploy once, then set it back to false and redeploy.
-  if (process.env.RUN_SEED === 'true') {
-    console.log('RUN_SEED=true -> seeding database from environment...');
+  // Seed on every boot from the host's env vars (Render/local .env). This makes
+  // the accounts always match the deployment's SEED_* config — set the creds
+  // once in the environment and they persist for the entire deployment. The
+  // env is the only source of credentials (the app has no password-change
+  // feature), so re-applying it on each start is safe and idempotent.
+  // Set SEED_ON_BOOT=false to opt out (e.g. to manage accounts another way).
+  if (process.env.SEED_ON_BOOT !== 'false') {
+    console.log('Seeding database from environment...');
     try {
       await seedDatabase();
     } catch (err) {
-      console.error('Seed-on-boot failed:', err);
+      // Don't let a seeding hiccup take down the API.
+      console.error('Seed-on-boot failed (continuing without it):', err);
     }
   }
 
