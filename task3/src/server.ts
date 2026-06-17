@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 // Route & Controller Imports
 import qrRoutes from './features/qr/routes/qr.routes.js';
 import { loginAdmin, logoutAdmin } from './features/qr/controller/auth.controller.js';
+import { seedDatabase } from './seed.js';
 
 // Load env
 dotenv.config();
@@ -80,7 +81,18 @@ app.get('/health', (req: Request, res: Response) => {
 
 // Connect to the database first, then start listening so the server
 // never accepts requests before MongoDB is ready.
-connectDB().then(() => {
+connectDB().then(async () => {
+  // Optional one-shot seeding on boot, using THIS host's env vars (e.g. Render).
+  // Set RUN_SEED=true, deploy once, then set it back to false and redeploy.
+  if (process.env.RUN_SEED === 'true') {
+    console.log('RUN_SEED=true -> seeding database from environment...');
+    try {
+      await seedDatabase();
+    } catch (err) {
+      console.error('Seed-on-boot failed:', err);
+    }
+  }
+
   app.listen(PORT, () => {
     console.log(`QR Scanner service running on http://localhost:${PORT}`);
   });
