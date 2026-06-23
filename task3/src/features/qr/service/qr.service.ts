@@ -30,11 +30,16 @@ const generateTicketId = async (session: "SESSION_1" | "SESSION_2"): Promise<str
 
 // generate and save the QR Code. The attendee is identified by their email,
 // which is unique per session — one ticket per email per session.
-export const generateTicketAndQR = async (email: string, session: "SESSION_1" | "SESSION_2") => {
+export const generateTicketAndQR = async (
+  email: string,
+  session: "SESSION_1" | "SESSION_2",
+  name?: string
+) => {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET is missing from .env");
 
   const normalizedEmail = email.trim().toLowerCase();
+  const cleanName = name?.trim() || undefined;
 
   // Reject up front if this email already has a ticket for this session.
   const existing = await Ticket.findOne({ email: normalizedEmail, session });
@@ -67,6 +72,7 @@ export const generateTicketAndQR = async (email: string, session: "SESSION_1" | 
     const newTicket = await Ticket.create({
       ticketId,
       email: normalizedEmail,
+      name: cleanName,
       userId: normalizedEmail,
       session,
       qrToken,

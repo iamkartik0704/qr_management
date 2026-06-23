@@ -6,6 +6,7 @@ import { useRequireAuth } from "@/lib/auth";
 import {
   generateTicket,
   getAttendance,
+  getAttendees,
   revokeTicket,
   listVolunteers,
   createVolunteer,
@@ -19,6 +20,8 @@ import {
   type VolunteerScanStat,
   type BulkGenerateResult,
   type BulkRevokeResult,
+  type Attendee,
+  type AttendeeSummary,
 } from "@/lib/api";
 import { parseAttendeeCsv, type ParsedAttendee } from "@/lib/csv";
 
@@ -43,6 +46,7 @@ export default function AdminPage() {
           <RevokePanel />
         </div>
         <BulkPanel />
+        <AttendeeListPanel />
         <VolunteersPanel />
         <ScanReportPanel />
       </div>
@@ -657,6 +661,156 @@ function BulkPanel() {
         </>
       )}
     </section>
+  );
+}
+
+function AttendeeListPanel() {
+  const [session, setSession] = useState<Session>("SESSION_1");
+  const [rows, setRows] = useState<Attendee[]>([]);
+  const [summary, setSummary] = useState<AttendeeSummary>({
+    total: 0,
+    attending: 0,
+    absent: 0,
+  });
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async (s: Session) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getAttendees(s);
+      setRows(res.data);
+      setSummary(res.summary);
+    } catch (err) {
+      setError((err as ApiError).message);
+      setRows([]);
+      setSummary({ total: 0, attending: 0, absent: 0 });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reload whenever the selected session changes.
+  useEffect(() => {
+    load(session);
+  }, [session]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? rows.filter(
+        (r) =>
+          (r.email || "").toLowerCase().includes(q) ||
+          (r.name || "").toLowerCase().includes(q)
+      )
+    : rows;
+
+  return (
+    <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Attendee List</h2>
+        <div className="flex items-center gap-2">
+          {/* Session switcher */}
+          <div className="inline-flex rounded-md border border-neutral-700 p-0.5">
+            {(["SESSION_1", "SESSION_2"] as Session[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSession(s)}
+                className={`rounded px-3 py-1.5 text-sm transition ${
+                  session === s
+                    ? "bg-neutral-800 text-white"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                {s === "SESSION_1" ? "Session 1" : "Session 2"}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => load(session)}
+            className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm transition hover:bg-neutral-800"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-3 gap-4">
+        <StatCard label="Total Tickets" value={summary.total} />
+        <StatCard label="Attending" value={summary.attending} accent />
+        <StatCard label="Absent" value={summary.absent} />
+      </div>
+
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search by name or email…"
+        className="mb-4 w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-red-500"
+      />
+
+      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+
+      <div className="max-h-96 overflow-auto rounded-lg border border-neutral-800">
+        <table className="w-full text-left text-sm">
+          <thead className="sticky top-0 bg-neutral-950">
+            <tr className="border-b border-neutral-800 text-neutral-400">
+              <th className="px-3 py-2 font-medium">Name</th>
+              <th className="px-3 py-2 font-medium">Email</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && !loading && (
+              <tr>
+                <td colSpan={3} className="py-6 text-center text-neutral-500">
+                  {rows.length === 0
+                    ? "No tickets generated for this session yet."
+                    : "No attendees match your search."}
+                </td>
+              </tr>
+            )}
+            {filtered.map((r) => (
+              <tr key={r.ticketId} className="border-b border-neutral-900">
+                <td className="px-3 py-2">{r.name || "—"}</td>
+                <td className="px-3 py-2 text-neutral-400">{r.email}</td>
+                <td className="px-3 py-2">
+                  <AttendanceBadge attendee={r} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-xs text-neutral-600">
+        &ldquo;Attending&rdquo; means the ticket was scanned at the gate for this
+        session. Revoked tickets cannot be checked in.
+      </p>
+    </section>
+  );
+}
+
+function AttendanceBadge({ attendee }: { attendee: Attendee }) {
+  // A revoked ticket can never attend, so flag it explicitly.
+  if (attendee.ticketStatus === "REVOKED") {
+    return (
+      <span className="rounded-full bg-red-950/50 px-2.5 py-0.5 text-xs font-medium text-red-300">
+        Revoked
+      </span>
+    );
+  }
+  if (attendee.isCheckedIn) {
+    return (
+      <span className="rounded-full bg-green-950/50 px-2.5 py-0.5 text-xs font-medium text-green-300">
+        Attending
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full bg-neutral-800 px-2.5 py-0.5 text-xs font-medium text-neutral-400">
+      Absent
+    </span>
   );
 }
 

@@ -138,6 +138,33 @@ export function revokeTicketsBulk(emails: string[]) {
   });
 }
 
+// ---- Admin: Attendee list (per session) ----
+export type Attendance = "ATTENDING" | "ABSENT";
+
+export interface Attendee {
+  ticketId: string;
+  email: string;
+  name: string | null;
+  ticketStatus: "ACTIVE" | "REVOKED" | "USED";
+  isCheckedIn: boolean;
+  attendance: Attendance;
+  checkedInAt: string | null;
+}
+
+export interface AttendeeSummary {
+  total: number;
+  attending: number;
+  absent: number;
+}
+
+export function getAttendees(session: Session) {
+  return request<{
+    success: boolean;
+    data: Attendee[];
+    summary: AttendeeSummary;
+  }>(`/api/qr/admin/attendees?session=${session}`, { method: "GET" });
+}
+
 export function getAttendance() {
   return request<{
     success: boolean;

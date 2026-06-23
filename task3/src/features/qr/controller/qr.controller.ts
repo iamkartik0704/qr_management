@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Ticket } from '../model/ticket.model.js';
 import { generateTicketAndQR, DuplicateTicketError } from '../service/qr.service.js';
 import { validateTicketScan, revokeTicket } from '../service/validation.service.js';
 import { getAttendanceStats, getVolunteerScanStats } from '../service/attendance.service.js';
@@ -46,7 +47,7 @@ export const generateTicket = async (req: Request, res: Response): Promise<any> 
     }
     const validSession = session as ValidSession;
 
-    const ticketData = await generateTicketAndQR(email, validSession);
+    const ticketData = await generateTicketAndQR(email, validSession, name);
 
     const emailResult = await tryEmailTicket(email, name, ticketData, validSession);
 
@@ -92,7 +93,7 @@ export const generateTicketsBulk = async (req: Request, res: Response): Promise<
         continue;
       }
       try {
-        const ticketData = await generateTicketAndQR(email, validSession);
+        const ticketData = await generateTicketAndQR(email, validSession, attendee.name);
         const emailResult = await tryEmailTicket(email, attendee.name, ticketData, validSession);
         results.push({
           email,
@@ -151,6 +152,47 @@ export const validateScan = async (req: Request, res: Response): Promise<any> =>
   } catch (error: any) {
     console.error("QR Validation Error:", error);
     return res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
+// Full attendee roster for one session: every generated ticket plus whether the
+// holder has been scanned in (Attending) or not yet (Absent). Drives the admin
+// attendee-list panel, which switches between sessions client-side.
+export const getAttendees = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const session = req.query.session;
+    if (session !== "SESSION_1" && session !== "SESSION_2") {
+      return res
+        .status(400)
+        .json({ error: "Invalid or missing session. Use SESSION_1 or SESSION_2." });
+    }
+
+    // Newest first so freshly generated tickets appear at the top.
+    const tickets = await Ticket.find({ session })
+      .select("ticketId email name status isCheckedIn checkedInAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const data = tickets.map((t) => ({
+      ticketId: t.ticketId,
+      email: t.email,
+      name: t.name || null,
+      ticketStatus: t.status, // ACTIVE | REVOKED | USED
+      isCheckedIn: Boolean(t.isCheckedIn),
+      // "ATTENDING" once scanned at the gate, otherwise "ABSENT".
+      attendance: t.isCheckedIn ? "ATTENDING" : "ABSENT",
+      checkedInAt: t.checkedInAt || null,
+    }));
+
+    const attending = data.filter((d) => d.isCheckedIn).length;
+    return res.status(200).json({
+      success: true,
+      data,
+      summary: { total: data.length, attending, absent: data.length - attending },
+    });
+  } catch (error) {
+    console.error("Attendees Error:", error);
+    return res.status(500).json({ success: false, error: "Failed to fetch attendees" });
   }
 };
 

@@ -8,6 +8,7 @@ import {
   handleRevokeBulk,
   getVolunteerStats,
   generateTicketsBulk,
+  getAttendees,
 } from '../controller/qr.controller';
 import {
   createVolunteer,
@@ -20,6 +21,7 @@ const router = Router();
 
 // Admin Only Routes
 router.get('/admin/attendance', requireAuth, requireAdmin, getStats);
+router.get('/admin/attendees', requireAuth, requireAdmin, getAttendees);
 router.get('/admin/scan-stats', requireAuth, requireAdmin, getVolunteerStats);
 router.patch('/admin/ticket/revoke', requireAuth, requireAdmin, handleRevoke);
 router.patch('/admin/ticket/revoke-bulk', requireAuth, requireAdmin, handleRevokeBulk);

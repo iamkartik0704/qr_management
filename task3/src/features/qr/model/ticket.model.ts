@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ITicket extends Document {
   ticketId: string;
   email: string;
+  name?: string;
   userId: string;
   session: "SESSION_1" | "SESSION_2";
   qrToken: string;
@@ -15,6 +16,10 @@ export interface ITicket extends Document {
 const ticketSchema = new Schema<ITicket>({
   ticketId: { type: String, required: true, unique: true },
   email: { type: String, required: true },
+  // Optional attendee name, captured at generation so the admin attendee list
+  // can show a human-readable name alongside the email. Tickets created before
+  // this field existed simply won't have one.
+  name: { type: String },
   userId: { type: String, required: true },
   session: { type: String, enum: ["SESSION_1", "SESSION_2"], required: true },
   qrToken: { type: String, required: true },

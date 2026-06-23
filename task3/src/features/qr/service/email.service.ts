@@ -33,6 +33,15 @@ const getTransporter = (): Transporter => {
     secure: cfg.secure,
     // Auth is optional — a local relay may accept mail without credentials.
     auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+    // Fail fast instead of hanging on nodemailer's ~2-minute default. Many hosts
+    // (e.g. Render free tier) block/throttle outbound SMTP; without these the
+    // awaited send blocks the HTTP response until the platform resets the
+    // connection, surfacing on the client as "Cannot reach the server". With
+    // them, a dead SMTP errors in seconds and ticket generation still succeeds
+    // (tryEmailTicket catches it and reports emailSent: false).
+    connectionTimeout: 10_000, // TCP connect
+    greetingTimeout: 10_000,   // wait for server 220 greeting
+    socketTimeout: 15_000,     // inactivity once connected
   });
 
   return transporter;
