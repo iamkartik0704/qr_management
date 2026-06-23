@@ -1,4 +1,5 @@
 import nodemailer, { Transporter } from 'nodemailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
 
 // SMTP is configured entirely through env vars so it can point at ANY server —
 // a locally hosted SMTP (Postfix/MailHog), a company relay, or a provider.
@@ -27,10 +28,16 @@ const getTransporter = (): Transporter => {
   if (transporter) return transporter;
 
   const cfg = getConfig();
-  transporter = nodemailer.createTransport({
+  const options = {
     host: cfg.host,
     port: cfg.port,
     secure: cfg.secure,
+    // Force IPv4. Many cloud hosts (Render, etc.) resolve smtp.gmail.com to an
+    // IPv6 address but have no routable IPv6, so the connect fails with
+    // ENETUNREACH on a 2404:6800:... address. Restricting the lookup to A
+    // records (IPv4) avoids that. (`family` is valid at runtime but missing
+    // from nodemailer's types, hence the cast below.)
+    family: 4,
     // Auth is optional — a local relay may accept mail without credentials.
     auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
     // Fail fast instead of hanging on nodemailer's ~2-minute default. Many hosts
@@ -42,7 +49,9 @@ const getTransporter = (): Transporter => {
     connectionTimeout: 10_000, // TCP connect
     greetingTimeout: 10_000,   // wait for server 220 greeting
     socketTimeout: 15_000,     // inactivity once connected
-  });
+  } as SMTPTransport.Options;
+
+  transporter = nodemailer.createTransport(options);
 
   return transporter;
 };
