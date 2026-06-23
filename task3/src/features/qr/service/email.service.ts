@@ -1,5 +1,7 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
+import dns from 'node:dns/promises';
+import net from 'node:net';
 
 // SMTP is configured entirely through env vars so it can point at ANY server —
 // a locally hosted SMTP (Postfix/MailHog), a company relay, or a provider.
@@ -24,20 +26,37 @@ export const isEmailConfigured = (): boolean => Boolean(process.env.SMTP_HOST);
 
 let transporter: Transporter | null = null;
 
-const getTransporter = (): Transporter => {
+const getTransporter = async (): Promise<Transporter> => {
   if (transporter) return transporter;
 
   const cfg = getConfig();
+
+  // Resolve the SMTP host to an IPv4 address OURSELVES and connect by IP.
+  // Many cloud hosts (Render, etc.) have no routable IPv6, yet smtp.gmail.com
+  // advertises an AAAA record — letting the SMTP client pick it causes
+  // `connect ENETUNREACH 2404:6800:...:465`. nodemailer's own `family: 4`
+  // option does not reliably steer its hostname resolution, so we do the A
+  // lookup here and pass the literal IPv4. The original hostname is kept as the
+  // TLS servername so Gmail's certificate still validates.
+  let host = (cfg.host || '') as string;
+  let servername: string | undefined;
+  if (host && !net.isIP(host)) {
+    try {
+      const { address } = await dns.lookup(host, { family: 4 });
+      servername = host;
+      host = address;
+    } catch {
+      // DNS failed — fall back to the hostname and let nodemailer resolve it.
+    }
+  }
+
   const options = {
-    host: cfg.host,
+    host,
     port: cfg.port,
     secure: cfg.secure,
-    // Force IPv4. Many cloud hosts (Render, etc.) resolve smtp.gmail.com to an
-    // IPv6 address but have no routable IPv6, so the connect fails with
-    // ENETUNREACH on a 2404:6800:... address. Restricting the lookup to A
-    // records (IPv4) avoids that. (`family` is valid at runtime but missing
-    // from nodemailer's types, hence the cast below.)
     family: 4,
+    // When we connected by IP, validate TLS against the real hostname.
+    ...(servername ? { tls: { servername }, name: servername } : {}),
     // Auth is optional — a local relay may accept mail without credentials.
     auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
     // Fail fast instead of hanging on nodemailer's ~2-minute default. Many hosts
@@ -97,7 +116,8 @@ export const sendTicketEmail = async (input: TicketEmailInput): Promise<void> =>
     <p style="color:#888; font-size:12px; margin-top:24px;">This ticket is unique to you. Do not share it — it can only be checked in once.</p>
   </div>`;
 
-  await getTransporter().sendMail({
+  const tx = await getTransporter();
+  await tx.sendMail({
     from: getConfig().from,
     to,
     subject: `Your TEDxIITPatna Ticket — ${prettySession(session)}`,
