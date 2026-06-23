@@ -67,22 +67,75 @@ export function logout() {
 }
 
 // ---- Admin: Ticket generation ----
-export function generateTicket(userId: string, session: Session) {
+export function generateTicket(email: string, session: Session, name?: string) {
   return request<{
     success: boolean;
     message: string;
-    data: { ticketId: string; qrCode: string; qrToken: string };
+    data: {
+      ticketId: string;
+      qrCode: string;
+      qrToken: string;
+      emailSent?: boolean;
+      emailError?: string;
+    };
   }>("/api/qr/generate", {
     method: "POST",
-    body: JSON.stringify({ userId, session }),
+    body: JSON.stringify({ email, session, name }),
   });
 }
 
-export function revokeTicket(ticketId: string) {
+// Revoke by ticketId OR email (one of the two must be provided).
+export function revokeTicket(identifier: { ticketId?: string; email?: string }) {
   return request<{ success: boolean; message: string }>(
     "/api/qr/admin/ticket/revoke",
-    { method: "PATCH", body: JSON.stringify({ ticketId }) }
+    { method: "PATCH", body: JSON.stringify(identifier) }
   );
+}
+
+// ---- Admin: Bulk (CSV) generation & revocation ----
+export interface BulkAttendee {
+  email: string;
+  name?: string;
+}
+
+export interface BulkGenerateResult {
+  email: string;
+  status: "generated" | "duplicate" | "error";
+  ticketId?: string;
+  emailSent?: boolean;
+  message?: string;
+}
+
+export function generateTicketsBulk(
+  attendees: BulkAttendee[],
+  session: Session
+) {
+  return request<{
+    success: boolean;
+    message: string;
+    data: BulkGenerateResult[];
+  }>("/api/qr/generate-bulk", {
+    method: "POST",
+    body: JSON.stringify({ attendees, session }),
+  });
+}
+
+export interface BulkRevokeResult {
+  email: string;
+  status: "revoked" | "not_found" | "error";
+  revokedCount?: number;
+  message?: string;
+}
+
+export function revokeTicketsBulk(emails: string[]) {
+  return request<{
+    success: boolean;
+    message: string;
+    data: BulkRevokeResult[];
+  }>("/api/qr/admin/ticket/revoke-bulk", {
+    method: "PATCH",
+    body: JSON.stringify({ emails }),
+  });
 }
 
 export function getAttendance() {
@@ -90,6 +143,59 @@ export function getAttendance() {
     success: boolean;
     data: { _id: Session; count: number }[];
   }>("/api/qr/admin/attendance", { method: "GET" });
+}
+
+// ---- Admin: Volunteer management ----
+export interface Volunteer {
+  _id: string;
+  email: string;
+  role: Role;
+  createdAt?: string;
+}
+
+export function listVolunteers() {
+  return request<{ success: boolean; data: Volunteer[] }>(
+    "/api/qr/admin/volunteers",
+    { method: "GET" }
+  );
+}
+
+export function createVolunteer(email: string, password: string) {
+  return request<{
+    success: boolean;
+    message: string;
+    data: { id: string; email: string; role: Role };
+  }>("/api/qr/admin/volunteers", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function deleteVolunteer(id: string) {
+  return request<{ success: boolean; message: string }>(
+    `/api/qr/admin/volunteers/${id}`,
+    { method: "DELETE" }
+  );
+}
+
+// ---- Admin: Volunteer scan report ----
+export interface VolunteerScanStat {
+  scannedById: string;
+  email: string;
+  role: Role | null;
+  total: number;
+  success: number;
+  duplicate: number;
+  revoked: number;
+  invalid: number;
+  wrongSession: number;
+}
+
+export function getVolunteerScanStats() {
+  return request<{ success: boolean; data: VolunteerScanStat[] }>(
+    "/api/qr/admin/scan-stats",
+    { method: "GET" }
+  );
 }
 
 // ---- Validation (Admin + Volunteer) ----

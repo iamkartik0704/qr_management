@@ -46,9 +46,9 @@ export const seedDatabase = async () => {
   }
   await upsertUser(adminEmail, adminPassword, 'ADMIN');
 
-  // Canonical set of accounts defined by the current env. Anything else is pruned.
-  const canonicalEmails = [adminEmail];
-
+  // Optional bootstrap volunteers from env. These are upserted (so their
+  // passwords stay in sync with the env) but we DO NOT prune anything else:
+  // volunteers the admin creates at runtime must survive server restarts.
   const volunteerEmailsRaw = process.env.SEED_VOLUNTEER_EMAILS;
   const volunteerPassword = process.env.SEED_VOLUNTEER_PASSWORD;
   if (volunteerEmailsRaw && volunteerPassword) {
@@ -58,17 +58,9 @@ export const seedDatabase = async () => {
       .filter(Boolean);
     for (const email of emails) {
       await upsertUser(email, volunteerPassword, 'VOLUNTEER');
-      canonicalEmails.push(email);
     }
   } else {
     console.log('No SEED_VOLUNTEER_EMAILS/PASSWORD set. Skipping volunteers.');
-  }
-
-  // Prune any account not in the current SEED_* config so the DB matches the
-  // environment exactly — stops stale, still-loggable-in accounts accumulating.
-  const pruned = await Admin.deleteMany({ email: { $nin: canonicalEmails } });
-  if (pruned.deletedCount) {
-    console.log(`Pruned ${pruned.deletedCount} account(s) not in seed config.`);
   }
 
   console.log('Database seeded successfully!');

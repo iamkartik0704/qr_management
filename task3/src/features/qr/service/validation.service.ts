@@ -80,10 +80,26 @@ const logAttendance = async (
   });
 };
 
-export const revokeTicket = async (ticketId: string) => {
-  return await Ticket.findOneAndUpdate(
-    { ticketId },
-    { status: "REVOKED" },
-    { new: true }
-  );
+// Revoke by ticketId (single ticket) or by email (all of that attendee's
+// tickets, across sessions). Returns the number of tickets revoked.
+export const revokeTicket = async (identifier: { ticketId?: string; email?: string }) => {
+  if (identifier.ticketId) {
+    const ticket = await Ticket.findOneAndUpdate(
+      { ticketId: identifier.ticketId },
+      { status: "REVOKED" },
+      { new: true }
+    );
+    return ticket ? 1 : 0;
+  }
+
+  if (identifier.email) {
+    const email = identifier.email.trim().toLowerCase();
+    const result = await Ticket.updateMany(
+      { email },
+      { status: "REVOKED" }
+    );
+    return result.modifiedCount;
+  }
+
+  return 0;
 };
